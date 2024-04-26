@@ -3,7 +3,6 @@ import networkx as nx
 import time
 import copy
 from shapely.geometry import Point, LineString
-from apls_mod_3d import *
 
 def pixel_graph(skeleton):
 
