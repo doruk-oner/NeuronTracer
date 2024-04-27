@@ -106,6 +106,40 @@ def get_visible_nodes(img: da.array, center_loc, chunk_shape, path_coordinates) 
     return visible_nodes_relative_loc
 
 
+def get_visible_nodes_idx(img: da.array, center_loc, chunk_shape, path_coordinates) -> da.Array:
+    center_loc_array = np.asarray(center_loc).astype(int)
+    cz, cy, cx = center_loc_array
+    depth, width, length = chunk_shape
+
+    max_z, max_y, max_x = img.shape
+    
+    start_z = cz - depth // 2
+    stop_z = cz + depth // 2
+    start_y = cy - width // 2
+    stop_y = cy + width // 2
+    start_x = cx - length // 2
+    stop_x = cx + length // 2
+
+    # Take care of img borders
+    start_z = max(start_z, 0)
+    start_y = max(start_y, 0)
+    start_x = max(start_x, 0)
+
+    stop_z = min(stop_z, max_z)
+    stop_y = min(stop_y, max_y)
+    stop_x = min(stop_x, max_x)
+
+    path_coordinates_array = np.asarray(path_coordinates).astype(int)
+    visible_nodes_filter = (path_coordinates_array[:, 0] >= start_z) & \
+        (path_coordinates_array[:, 0] < stop_z) & \
+        (path_coordinates_array[:, 1] >= start_y) & \
+        (path_coordinates_array[:, 1] < stop_y) & \
+        (path_coordinates_array[:, 2] >= start_x) & \
+        (path_coordinates_array[:, 2] < stop_x)
+
+    return visible_nodes_filter
+
+
 def get_bbox_location(img: da.array, center_loc, chunk_shape):
     center_loc_array = np.asarray(center_loc).astype(int)
     cz, cy, cx = center_loc_array
@@ -245,7 +279,6 @@ class NeuronSkeletonWalker(QWidget):
             size=1,
         )
         self.points_layer.events.data.connect(self._point_move_update_path)
-        self.points_layer.events.data.connect(self._point_delete)
 
         # Shapes layer (path)
         self.shapes_layer = self.viewer.add_shapes(
@@ -470,22 +503,34 @@ class NeuronSkeletonWalker(QWidget):
         self.pbar.setMaximum(1) # Stop the progress bar
 
     def _point_move_update_path(self, event):
+
+        # TODO update path_coordinates
+        global_idx = get_visible_nodes_idx(
+            self.img,
+            center_loc=self.center_loc,
+            chunk_shape=self.chunk_shape,
+            path_coordinates=self.path_coordinates
+        )
+        # first index that is True
+        global_shift = np.where(global_idx)[0][0]
         
         if event.action == "changed": 
 
             edited_point_idx = event.data_indices[0]
+            new_location = event.value[edited_point_idx] + self.center_loc - np.asarray(self.chunk_shape) // 2
 
-            # get changed point location
-            new_location = event.value[edited_point_idx]
-
-            # TODO store new location in coordinates
+            # update path_coordinates
+            if np.any(new_location != self.path_coordinates[global_shift + edited_point_idx]):
+                self.path_coordinates[global_shift + edited_point_idx] = new_location
 
             # update path
             self.shapes_layer.data = event.value
 
-    def _point_delete(self, event):
-        if event.action == "removed":
+        elif event.action == "removed":
             self.shapes_layer.data = event.value
+
+            # delete from numpy array
+            self.path_coordinates = np.delete(self.path_coordinates, global_shift + event.data_indices, axis=0)
 
 """
 Launch viewer
