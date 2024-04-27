@@ -93,7 +93,15 @@ def plot_graph(graph, node_size=20, font_size=-1,
     nx.draw_networkx(graph, pos=pos, node_size=node_size, node_color=node_color,
                      edge_color=edge_color, font_size=font_size, **kwargs)
     plt.gca().invert_yaxis()
-    plt.legend()     
+    plt.legend() 
+    
+def plot_graph_3d(graph, node_size=2.2, font_size=-1, 
+               node_color='r', edge_color='r', 
+               linewidths=2, offset=np.array([0,0]), **kwargs):
+  
+    pos = dict({n:graph.nodes[n]['pos'][:2]+offset for n in graph.nodes()})
+    nx.draw_networkx(graph, pos=pos, node_size=node_size, node_color=node_color,
+                     edge_color=edge_color, font_size=font_size, **kwargs)
     
 def load_graph_txt(filename):
      
