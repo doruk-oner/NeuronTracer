@@ -245,6 +245,7 @@ class NeuronSkeletonWalker(QWidget):
             size=1,
         )
         self.points_layer.events.data.connect(self._point_move_update_path)
+        self.points_layer.events.data.connect(self._point_delete)
 
         # Shapes layer (path)
         self.shapes_layer = self.viewer.add_shapes(
@@ -482,6 +483,9 @@ class NeuronSkeletonWalker(QWidget):
             # update path
             self.shapes_layer.data = event.value
 
+    def _point_delete(self, event):
+        if event.action == "removed":
+            self.shapes_layer.data = event.value
 
 """
 Launch viewer
