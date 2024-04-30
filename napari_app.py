@@ -106,6 +106,40 @@ def get_visible_nodes(img: da.array, center_loc, chunk_shape, path_coordinates) 
     return visible_nodes_relative_loc
 
 
+def get_visible_nodes_idx(img: da.array, center_loc, chunk_shape, path_coordinates) -> da.Array:
+    center_loc_array = np.asarray(center_loc).astype(int)
+    cz, cy, cx = center_loc_array
+    depth, width, length = chunk_shape
+
+    max_z, max_y, max_x = img.shape
+    
+    start_z = cz - depth // 2
+    stop_z = cz + depth // 2
+    start_y = cy - width // 2
+    stop_y = cy + width // 2
+    start_x = cx - length // 2
+    stop_x = cx + length // 2
+
+    # Take care of img borders
+    start_z = max(start_z, 0)
+    start_y = max(start_y, 0)
+    start_x = max(start_x, 0)
+
+    stop_z = min(stop_z, max_z)
+    stop_y = min(stop_y, max_y)
+    stop_x = min(stop_x, max_x)
+
+    path_coordinates_array = np.asarray(path_coordinates).astype(int)
+    visible_nodes_filter = (path_coordinates_array[:, 0] >= start_z) & \
+        (path_coordinates_array[:, 0] < stop_z) & \
+        (path_coordinates_array[:, 1] >= start_y) & \
+        (path_coordinates_array[:, 1] < stop_y) & \
+        (path_coordinates_array[:, 2] >= start_x) & \
+        (path_coordinates_array[:, 2] < stop_x)
+
+    return visible_nodes_filter
+
+
 def get_bbox_location(img: da.array, center_loc, chunk_shape):
     center_loc_array = np.asarray(center_loc).astype(int)
     cz, cy, cx = center_loc_array
@@ -183,6 +217,11 @@ class SkeletonWrapper:
     def path_coordinates(self):
         return self._path_coordinates
     
+    @path_coordinates.setter
+    def path_coordinates(self, new_coordinates):
+        print('Setting - ', new_coordinates)
+        self._path_coordinates = new_coordinates
+    
     @property
     def path_coordinates_2d(self):
         return self._path_coordinates[:, 1:]
@@ -216,8 +255,6 @@ class SkeletonWrapper:
         self._minimap_path_layer = minimap_path_layer
 
     def _point_move_update_path(self, event):   
-        # TODO: Updat self._path_coordinates
-
         if event.action == "changed":
             self.shapes_layer.data = event.value
     
@@ -358,7 +395,7 @@ class NeuronSkeletonWalker(QWidget):
                 name=f"Nodes {idx}",
             )
             skeleton.points_layer.events.data.connect(skeleton._point_move_update_path)
-            # skeleton.points_layer.events.data.connect(skeleton._point_delete)
+            skeleton.points_layer.events.data.connect(self._handle_points_data_changed)
         
         # One shapes layer per skeleton
         for idx, skeleton in self.skeleton_database.items():
@@ -420,6 +457,30 @@ class NeuronSkeletonWalker(QWidget):
     @property
     def path_coordinates_2d(self):
         return self.selected_skeleton.path_coordinates_2d
+
+    def _handle_points_data_changed(self, event):
+        global_idx = get_visible_nodes_idx(
+            self.img,
+            center_loc=self.center_loc,
+            chunk_shape=self.chunk_shape,
+            path_coordinates=self.path_coordinates
+        )
+        global_shift = np.where(global_idx)[0][0]
+
+        if event.action == "changed": 
+            edited_point_idx = event.data_indices[0]
+            new_location = event.value[edited_point_idx] + self.center_loc - np.asarray(self.chunk_shape) // 2
+
+            if np.any(new_location != self.path_coordinates[global_shift + edited_point_idx]):
+                print(self.path_coordinates[global_shift + edited_point_idx])
+                print(self.selected_skeleton.path_coordinates[global_shift + edited_point_idx])
+                self.path_coordinates[global_shift + edited_point_idx] = new_location
+                print(self.path_coordinates[global_shift + edited_point_idx])
+                print(self.selected_skeleton.path_coordinates[global_shift + edited_point_idx])
+                print()
+
+        elif event.action == "removed":
+            self.path_coordinates = np.delete(self.path_coordinates, global_shift + event.data_indices, axis=0)
 
     def _handle_skeleton_changed(self, database_index):
         # print(f"Selected skeleton changed to - {database_index=}")
